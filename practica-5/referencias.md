@@ -1,8 +1,8 @@
 # Claves foráneas y acciones referenciales — Proyecto propio
 
-Práctica 4 · Ejercicios 2.1 y 2.2 · RedHuella · PostgreSQL
+Práctica 5 · Ejercicios 2.1 y 2.2 · HuellaRed · PostgreSQL
 
-Este inventario se basa en `esquema.sql`, que crea el modelo relacional de la Práctica 3. La migración `practica-4/migraciones/001-dominios.sql` agrega dominios y restricciones de dominio; no cambia las claves foráneas. Las 23 claves foráneas están declaradas en el esquema. Las columnas que forman parte de una FK son `NOT NULL` salvo cuando la relación es opcional.
+Este inventario se basa en `esquema.sql`, que crea el modelo relacional de la Práctica 3. La migración `practica-4/migraciones/001-dominios.sql` agrega dominios y restricciones de dominio; no cambia las claves foráneas. Las 29 claves foráneas están declaradas en el esquema, que contiene 23 tablas. Las columnas que forman parte de una FK son `NOT NULL` salvo cuando la relación es opcional.
 
 `ON UPDATE CASCADE` se usa en todas las claves: si se modifica una clave primaria referenciada, las referencias conservan su vínculo. En este modelo los identificadores se asignan al insertar y normalmente no cambian, pero la acción evita referencias rotas si se actualiza alguno.
 
