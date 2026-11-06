@@ -12,36 +12,48 @@ Ejercicio 1.6 · PostgreSQL 17 · Responsable: Gael.
 
 Los usuarios heredan los permisos de su rol. El administrador del servidor solo configura inicialmente estos objetos. El rol hr_admin pasa a ser propietario de las tablas y tipos del proyecto. Para crear objetos nuevos como propietario común, el administrador debe ejecutar `SET ROLE hr_admin`. No se conceden permisos automáticos sobre futuras tablas.
 
-El cargador necesita acceder a todas las tablas porque poblará entidades, subtipos y relaciones. La aplicación no recibe TRUNCATE, creación de objetos ni propiedad de tablas. Consulta solo recibe SELECT. Los identificadores son enteros asignados por la carga: el esquema no usa secuencias que requieran concesiones adicionales. Se retira CREATE de PUBLIC en el esquema public. Este alcance corresponde a una base dedicada a HuellaRed con los usuarios nuevos de esta práctica.
+El rol de aplicación atiende el registro y mantenimiento de las 23 tablas: SELECT para consultar registros y sus relaciones; INSERT para altas y carga; UPDATE para corregir datos y registrar cambios de estado; DELETE para retirar registros capturados por error, siempre sujeto a las claves foráneas. El cargador usa ese mismo rol. No recibe TRUNCATE, creación de objetos permanentes en public ni propiedad de tablas. Consulta solo recibe SELECT sobre las tablas. Los identificadores son enteros asignados por la carga: el esquema no usa secuencias que requieran concesiones adicionales. Se retira CREATE de PUBLIC en el esquema public. Este alcance corresponde a una base dedicada a HuellaRed con los usuarios nuevos de esta práctica.
 
 ## Archivos y preparación
 
 - `seguridad/roles.sql`: roles y concesiones, con sentencias SQL ejecutables.
 - `seguridad/configurar.py`: ejecuta el SQL y crea los usuarios con contraseñas tomadas del entorno, en una misma transacción.
 - `seguridad/pruebas-permisos.sql`: casos para ejecutar por separado en pgAdmin.
+- `seguridad/probar.py`: ejecuta esos mismos casos con conexiones reales de cada usuario y comprueba la conexión del cargador. Revierte los datos de prueba y restaura el permiso retirado.
+- `poblar/cargar.py`: ejecuta un archivo SQL de datos usando exclusivamente `huellared_app`.
 
-Ejecutar primero `esquema.sql` y `migraciones/001-dominios.sql`. La configuración requiere una conexión inicial como administrador del servidor y acceso al puerto publicado por Docker. No vuelve a ejecutar el esquema ni las migraciones.
+El entorno de estas prácticas usa el contenedor `postgres_huellared_p45` y guarda sus datos en `data/`.
 
-Completar localmente las variables de `.env.example` en `.env`, que está excluido de Git: POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_PORT, PGHOST y las tres HUELLARED_*_PASSWORD. Mantener las variables POSTGRES_* de Docker con las credenciales del administrador inicial; las nuevas contraseñas pertenecen a los usuarios de la práctica. No incluir contraseñas en capturas.
+Completar localmente las variables de `.env.example` en `.env`, que está excluido de Git: POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_PORT, PGHOST y las tres HUELLARED_*_PASSWORD. Mantener las variables POSTGRES_* de Docker con las credenciales del administrador inicial; las nuevas contraseñas pertenecen a los usuarios de la práctica.
 
-El programa lee variables del entorno, no carga `.env` automáticamente. Si solo están en `.env`, una forma de ejecutarlo desde la raíz del repositorio es:
-
-```powershell
-python -m pip install "psycopg[binary]>=3.2,<4" "python-dotenv>=1,<2"
-python -m dotenv -f .env run -- python practica-4/seguridad/configurar.py
-```
-
-También puede ejecutarse directamente si las variables ya están exportadas:
+Desde la raíz de este repositorio, con Docker Desktop encendido:
 
 ```powershell
-python practica-4/seguridad/configurar.py
+docker compose up -d --wait
 ```
 
-La configuración es transaccional y admite repetirse para estos mismos usuarios y roles. Si falla, no confirma cambios. Se debe realizar sobre los nombres reservados de esta práctica, sin asignarles otros roles adicionales que amplíen sus permisos.
+En la primera ejecución, con `data/` vacío, PostgreSQL ejecuta automáticamente `esquema.sql` y después `practica-4/migraciones/001-dominios.sql`. `--wait` espera a que el servidor esté listo. En siguientes arranques se conservan los datos y no se repiten esos scripts. `configurar.py` se ejecuta después con el comando siguiente: configura usuarios y permisos, pero no vuelve a ejecutar el esquema ni las migraciones.
+
+Para detener este entorno sin borrar los datos, ejecutar `docker compose stop`. Para volver a iniciarlo, usar de nuevo `docker compose up -d --wait`.
+
+El programa lee variables del entorno, no carga `.env` automáticamente. Desde la raíz del repositorio, preparar las dependencias una vez:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "psycopg[binary]>=3.2,<4" "python-dotenv[cli]>=1,<2"
+```
+
+Configurar usuarios y permisos con las variables de `.env`:
+
+```powershell
+.\.venv\Scripts\python.exe -m dotenv -f .env run -- .\.venv\Scripts\python.exe practica-4/seguridad/configurar.py
+```
+
+La configuración es transaccional y admite repetirse para estos mismos usuarios y roles. Si falla, no confirma cambios. Se debe realizar sobre los nombres reservados de esta práctica, sin asignarles otros roles adicionales que amplíen sus permisos. Se ejecutó dos veces correctamente; la salida está en [la evidencia de configuración](../evidencias/configuracion.png). `.env` y `.venv` están excluidos de Git.
 
 ## Conexión del cargador (ejercicio 1.4)
 
-El futuro cargador deberá usar `huellared_app`, con contraseña tomada de `HUELLARED_APP_PASSWORD`, host PGHOST, puerto POSTGRES_PORT y base POSTGRES_DB. No usará POSTGRES_USER ni POSTGRES_PASSWORD para autenticar la carga. El código de conexión será equivalente a:
+`poblar/cargar.py` se conecta como `huellared_app`, con contraseña tomada de `HUELLARED_APP_PASSWORD`, host PGHOST, puerto POSTGRES_PORT y base POSTGRES_DB. No usa POSTGRES_USER ni POSTGRES_PASSWORD para autenticar la carga. Su conexión es:
 
 ```python
 conn = psycopg.connect(
@@ -53,22 +65,49 @@ conn = psycopg.connect(
 )
 ```
 
-Pendiente de integrar y demostrar al implementar 1.4: guardar la salida de `SELECT current_user, session_user` desde la conexión real del cargador. Definir estos permisos no demuestra por sí solo que el cargador ya los utiliza.
+Para ejecutar un archivo de datos:
 
-## Pruebas en pgAdmin y evidencias
+```powershell
+.\.venv\Scripts\python.exe -m dotenv -f .env run -- .\.venv\Scripts\python.exe practica-4/poblar/cargar.py ruta/al/archivo.sql
+```
 
-Registrar tres conexiones a la misma base con los usuarios anteriores. Ejecutar cada caso seleccionado del archivo SQL desde la conexión indicada, con autocommit habilitado. No ejecutar el archivo entero de una sola vez. Ante un error dentro de una transacción abierta, ejecutar ROLLBACK antes de continuar. Los mensajes siguientes son esperados; sustituir o acompañar con la salida real obtenida.
+El archivo debe contener SQL de datos, sin órdenes de psql ni BEGIN/COMMIT/ROLLBACK: la transacción la controla Python. La opción `--prueba` ejecuta la carga y la revierte. La prueba L1 utiliza este mismo programa para insertar una zona de prueba, comprueba `current_user` y `session_user`, y verifica que no quedó la fila después del ROLLBACK:
 
-| Caso | Usuario | Resultado esperado | Mensaje real / evidencia pendiente |
+```text
+Carga: current_user=huellared_app, session_user=huellared_app
+INSERT 0 1
+ROLLBACK: carga de prueba revertida.
+Filas de prueba después del ROLLBACK: 0
+```
+
+Esto demuestra el requisito de conexión del 1.6. El generador, la carga del conjunto completo, sus conteos y la repetibilidad del 1.4 se desarrollarán en el siguiente ejercicio sobre esta entrada de carga.
+
+## Pruebas y evidencias
+
+Las pruebas se ejecutaron sobre PostgreSQL 17.11 con conexiones autenticadas como cada usuario, el esquema y la migración 001 aplicados y las tablas inicialmente vacías. La salida completa, incluidas las sentencias y los mensajes del gestor, está en [evidencias/permisos-1.png](../evidencias/permisos-1.png), [evidencias/permisos-2.png](../evidencias/permisos-2.png) y [evidencias/permisos-3.png](../evidencias/permisos-3.png). No se necesitan datos del generador para comprobar los permisos.
+
+Para repetirlas y guardar su salida desde PowerShell:
+
+```powershell
+$env:PYTHONIOENCODING = 'utf-8'
+$salida = & .\.venv\Scripts\python.exe -m dotenv -f .env run -- .\.venv\Scripts\python.exe practica-4/seguridad/probar.py
+if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas de permisos' }
+$salida | Set-Content -Encoding utf8 evidencias/1.6-permisos.txt
+```
+
+También se pueden repetir manualmente en pgAdmin: registrar tres conexiones a la misma base con los usuarios anteriores y ejecutar cada caso seleccionado del archivo SQL desde la conexión indicada, con autocommit habilitado. No ejecutar el archivo entero de una sola vez. Ante un error dentro de una transacción abierta, ejecutar ROLLBACK antes de continuar.
+
+| Caso | Usuario | Resultado esperado | Resultado real |
 |---|---|---|---|
-| A1 | huellared_app | SELECT funciona; UPDATE sin filas funciona y afecta 0 filas. | Captura usuario, consultas y resultado. |
-| A2 | huellared_app | ALTER TABLE rechazado: se requiere ser propietario. | Copiar error real y capturar. |
-| C1 | huellared_consulta | SELECT funciona aunque la tabla esté vacía. | Captura usuario y resultado. |
-| C2 | huellared_consulta | DELETE rechazado por falta de permiso sobre persona. | Copiar error real y capturar. |
-| D1 | huellared_admin | CREATE TABLE funciona; ROLLBACK retira el objeto de prueba. | Capturar mensajes del bloque completo. |
-| D2 | huellared_admin | CREATE ROLE rechazado por carecer de CREATEROLE. | Copiar error real y capturar. |
-| R1–R2 | admin retira; consulta intenta leer | REVOKE confirmado; SELECT sobre persona deja de funcionar. | Capturar REVOKE y error en la conexión de consulta. |
-| R3–R4 | admin restaura; consulta vuelve a leer | GRANT confirmado; SELECT funciona de nuevo. | Capturar restauración y lectura. |
+| A1 | huellared_app | SELECT funciona; UPDATE sin filas funciona y afecta 0 filas. | Identidad `huellared_app`; conteo 0; `UPDATE 0`. |
+| A2 | huellared_app | ALTER TABLE rechazado: se requiere ser propietario. | `42501: must be owner of table animal`. |
+| C1 | huellared_consulta | SELECT funciona aunque la tabla esté vacía. | Identidad `huellared_consulta`; conteo 0. |
+| C2 | huellared_consulta | DELETE rechazado por falta de permiso sobre persona. | `42501: permission denied for table persona`. |
+| D1 | huellared_admin | CREATE TABLE funciona; ROLLBACK retira el objeto de prueba. | `CREATE TABLE` y `ROLLBACK`. |
+| D2 | huellared_admin | CREATE ROLE rechazado por carecer de CREATEROLE. | `42501: permission denied to create role`. |
+| R1–R2 | admin retira; consulta intenta leer | REVOKE confirmado; SELECT sobre persona deja de funcionar. | `REVOKE`; `42501: permission denied for table persona`. |
+| R3–R4 | admin restaura; consulta vuelve a leer | GRANT confirmado; SELECT funciona de nuevo. | `GRANT`; SELECT devuelve conteo 0. |
+| L1 | huellared_app, desde cargar.py | Inserción permitida, revertida al terminar la prueba. | `INSERT 0 1`; identidad de aplicación; 0 filas de prueba después del ROLLBACK. |
 
 Para las pruebas D1 y D2, la administración está deliberadamente limitada al proyecto. Por eso puede gestionar sus tablas pero no crear roles del servidor. No es un superusuario.
 
@@ -83,8 +122,6 @@ DELETE FROM public.persona WHERE FALSE;
 REVOKE SELECT ON TABLE public.persona FROM hr_consulta;
 GRANT SELECT ON TABLE public.persona TO hr_consulta;
 ```
-
-Guardar las capturas en `evidencias/` con nombres como `1.6-app-permitido.png`, `1.6-app-denegado.png`, `1.6-consulta-permitido.png`, `1.6-consulta-denegado.png`, `1.6-admin-permitido.png`, `1.6-admin-denegado.png`, `1.6-revoke.png` y `1.6-restauracion.png`. Incorporar aquí los enlaces y errores reales después de ejecutar. No hay resultados de ejecución fabricados en esta entrega.
 
 ## Matriz de permisos sobre tablas actuales
 

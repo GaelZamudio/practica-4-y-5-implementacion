@@ -1,5 +1,6 @@
 -- Ejecutar cada caso por separado en pgAdmin, conectado como el usuario indicado.
 -- No ejecutar todo el archivo con una sola conexión ni como postgres.
+-- Alternativa automática: probar.py abre cada conexión y ejecuta estos mismos casos.
 
 -- A1: huellared_app. Permitido: lectura y escritura (sin modificar filas).
 SELECT current_user, session_user;

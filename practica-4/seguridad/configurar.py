@@ -42,6 +42,13 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+    except psycopg.Error as exc:
+        # No imprimir el SQL ni los detalles: podrían contener una contraseña.
+        raise SystemExit(f"Configuración revertida. Error PostgreSQL "
+                         f"{exc.sqlstate or 'de conexión'}; revisa la conexión, "
+                         "los privilegios y la ejecución previa del esquema y 001.") from None
     except Exception:
         # Evita mostrar sentencias que puedan contener contraseñas.
         raise SystemExit("Configuración cancelada y revertida. Revisa conexión, variables, "
