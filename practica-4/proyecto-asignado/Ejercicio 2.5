@@ -1,0 +1,228 @@
+-- ============================================================
+-- Ejercicio 2.5: integridad referencial en el almacén de sismos
+--
+-- CORRER SOLO EN UNA COPIA de la base ya cargada con cargar_sismos.py:
+--   createdb sismos_copia25
+--   pg_dump -d "$PGDATABASE" | psql -d sismos_copia25
+--   psql -d sismos_copia25 -v ON_ERROR_STOP=1 -f integridad_referencial_sismos.sql
+-- (la conexión sale de PGHOST, PGPORT, PGUSER y PGPASSWORD del entorno)
+--
+-- Puntos del ejercicio que cubre:
+--   1. Hechos, dimensiones y granularidad          -> secciones 1 y 2
+--   2. ¿Hay claves foráneas? ¿Hay hechos huérfanos? -> secciones 3 y 4
+--   3. Agregar las claves en una copia y ver si los datos las cumplen,
+--      y qué se arriesga al omitirlas                -> secciones 5, 6 y 7
+-- ============================================================
+
+DO $$
+BEGIN
+    IF current_database() NOT LIKE '%copia%' THEN
+        RAISE EXCEPTION 'Esto debe correr solo en la copia; base actual: %', current_database();
+    END IF;
+END $$;
+
+\echo
+\echo '=== 1. GRANULARIDAD: qué representa un renglón de hechos ==='
+-- Si cada sismo aparece una sola vez, el grano es "un sismo con su impacto".
+SELECT count(*)                    AS hechos,
+       count(DISTINCT id_sismo)    AS sismos_distintos,
+       count(DISTINCT id_tiempo)   AS tiempos_distintos,
+       count(DISTINCT id_zonas)    AS zonas_usadas,
+       count(DISTINCT id_economia) AS economias_usadas
+FROM fact_impacto_sismos_imputed;
+
+-- ¿El tiempo y la población del hecho son los del sismo y los de su zona?
+SELECT count(*) FILTER (WHERE f.id_tiempo = f.id_sismo)           AS hechos_con_id_tiempo_igual_a_id_sismo,
+       count(*) FILTER (WHERE f.poblacion_afectada = z.pobtot)    AS hechos_con_poblacion_igual_a_pobtot_de_la_zona,
+       count(*)                                                   AS hechos
+FROM fact_impacto_sismos_imputed f
+JOIN dim_zonas z ON z.id_zonas = f.id_zonas;
+
+-- Renglones de dimensión que no tienen ningún hecho
+SELECT 'dim_sismos' AS dimension, count(*) AS renglones,
+       count(*) FILTER (WHERE f.id_sismo IS NULL) AS sin_hechos
+FROM dim_sismos d LEFT JOIN (SELECT DISTINCT id_sismo FROM fact_impacto_sismos_imputed) f ON f.id_sismo = d.id_sismo
+UNION ALL
+SELECT 'dim_tiempo', count(*), count(*) FILTER (WHERE f.id_tiempo IS NULL)
+FROM dim_tiempo d LEFT JOIN (SELECT DISTINCT id_tiempo FROM fact_impacto_sismos_imputed) f ON f.id_tiempo = d.id_tiempo
+UNION ALL
+SELECT 'dim_zonas', count(*), count(*) FILTER (WHERE f.id_zonas IS NULL)
+FROM dim_zonas d LEFT JOIN (SELECT DISTINCT id_zonas FROM fact_impacto_sismos_imputed) f ON f.id_zonas = d.id_zonas
+UNION ALL
+SELECT 'dim_economia', count(*), count(*) FILTER (WHERE f.id_economia IS NULL)
+FROM dim_economia d LEFT JOIN (SELECT DISTINCT id_economia FROM fact_impacto_sismos_imputed) f ON f.id_economia = d.id_economia;
+
+\echo
+\echo '=== 2. COLUMNAS DE LA TABLA DE HECHOS: llaves y medidas ==='
+SELECT column_name AS columna, data_type AS tipo, is_nullable AS acepta_nulo
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'fact_impacto_sismos_imputed'
+ORDER BY ordinal_position;
+
+\echo
+\echo '=== 3. ¿QUÉ CLAVES FORÁNEAS DECLARA EL ESQUEMA? ==='
+SELECT conrelid::regclass AS tabla, conname, pg_get_constraintdef(oid) AS definicion,
+       convalidated AS validada
+FROM pg_constraint
+WHERE connamespace = 'public'::regnamespace AND contype = 'f'
+ORDER BY conname;
+
+\echo
+\echo '=== 4. HECHOS QUE APUNTAN A DIMENSIONES QUE NO EXISTEN ==='
+-- huerfanos: la llave trae un valor que no está en la dimensión.
+-- llaves_nulas: una FK deja pasar el NULL sin validarlo, por eso se cuentan aparte.
+-- La última fila no es una FK declarada: dim_sismos y dim_tiempo se unen por
+-- id_sismo = id_tiempo en sismo.php y sismos.php, sin llave que lo respalde.
+CREATE OR REPLACE VIEW v_huerfanos_hechos AS
+SELECT 'id_sismo -> dim_sismos' AS relacion,
+       count(*) FILTER (WHERE f.id_sismo IS NOT NULL AND d.id_sismo IS NULL) AS huerfanos,
+       count(*) FILTER (WHERE f.id_sismo IS NULL) AS llaves_nulas,
+       count(*) AS renglones
+FROM fact_impacto_sismos_imputed f LEFT JOIN dim_sismos d ON d.id_sismo = f.id_sismo
+UNION ALL
+SELECT 'id_zonas -> dim_zonas',
+       count(*) FILTER (WHERE f.id_zonas IS NOT NULL AND d.id_zonas IS NULL),
+       count(*) FILTER (WHERE f.id_zonas IS NULL),
+       count(*)
+FROM fact_impacto_sismos_imputed f LEFT JOIN dim_zonas d ON d.id_zonas = f.id_zonas
+UNION ALL
+SELECT 'id_economia -> dim_economia',
+       count(*) FILTER (WHERE f.id_economia IS NOT NULL AND d.id_economia IS NULL),
+       count(*) FILTER (WHERE f.id_economia IS NULL),
+       count(*)
+FROM fact_impacto_sismos_imputed f LEFT JOIN dim_economia d ON d.id_economia = f.id_economia
+UNION ALL
+SELECT 'id_tiempo -> dim_tiempo',
+       count(*) FILTER (WHERE f.id_tiempo IS NOT NULL AND d.id_tiempo IS NULL),
+       count(*) FILTER (WHERE f.id_tiempo IS NULL),
+       count(*)
+FROM fact_impacto_sismos_imputed f LEFT JOIN dim_tiempo d ON d.id_tiempo = f.id_tiempo
+UNION ALL
+SELECT 'dim_sismos.id_sismo -> dim_tiempo.id_tiempo (implícita)',
+       count(*) FILTER (WHERE t.id_tiempo IS NULL), 0, count(*)
+FROM dim_sismos s LEFT JOIN dim_tiempo t ON t.id_tiempo = s.id_sismo;
+
+SELECT * FROM v_huerfanos_hechos;
+
+-- Detalle: los primeros hechos defectuosos y qué llave falla (vacío si todo está bien)
+CREATE OR REPLACE VIEW v_hechos_defectuosos AS
+SELECT f.id_sismo, f.id_zonas, f.id_economia, f.id_tiempo,
+       (s.id_sismo    IS NULL) AS sin_sismo,
+       (z.id_zonas    IS NULL) AS sin_zona,
+       (e.id_economia IS NULL) AS sin_economia,
+       (t.id_tiempo   IS NULL) AS sin_tiempo
+FROM fact_impacto_sismos_imputed f
+LEFT JOIN dim_sismos   s ON s.id_sismo    = f.id_sismo
+LEFT JOIN dim_zonas    z ON z.id_zonas    = f.id_zonas
+LEFT JOIN dim_economia e ON e.id_economia = f.id_economia
+LEFT JOIN dim_tiempo   t ON t.id_tiempo   = f.id_tiempo
+WHERE s.id_sismo IS NULL OR z.id_zonas IS NULL OR e.id_economia IS NULL OR t.id_tiempo IS NULL;
+
+SELECT * FROM v_hechos_defectuosos LIMIT 10;
+
+\echo
+\echo '=== 5. SIMULACIÓN: el almacén SIN claves foráneas (solo en esta copia) ==='
+ALTER TABLE fact_impacto_sismos_imputed
+    DROP CONSTRAINT fact_impacto_sismos_imputed_id_sismo_fkey,
+    DROP CONSTRAINT fact_impacto_sismos_imputed_id_zonas_fkey,
+    DROP CONSTRAINT fact_impacto_sismos_imputed_id_economia_fkey,
+    DROP CONSTRAINT fact_impacto_sismos_imputed_id_tiempo_fkey;
+
+-- Cinco hechos defectuosos, marcados con impacto_economico = -999 para borrarlos después
+INSERT INTO fact_impacto_sismos_imputed VALUES
+    (999999999, 0,   0,   0,         1000,   -999, 0.5, 1, 0),   -- sismo inexistente
+    (1,         999, 0,   1,         700000, -999, 0.5, 1, 0),   -- zona inexistente
+    (2,         0,   999, 2,         1000,   -999, 0.5, 1, 0),   -- economía inexistente
+    (3,         0,   0,   999999999, 1000,   -999, 0.5, 1, 0),   -- tiempo inexistente
+    (4,         NULL, 0,  4,         1000,   -999, 0.5, 1, 0);   -- zona nula
+
+\echo 'Las mismas consultas de la sección 4, ahora con hechos defectuosos:'
+SELECT * FROM v_huerfanos_hechos;
+SELECT * FROM v_hechos_defectuosos ORDER BY id_sismo;
+
+\echo
+\echo 'Riesgo silencioso: un JOIN normal descarta los hechos huérfanos sin avisar.'
+SELECT sum(poblacion_afectada) AS suma_real_en_hechos,
+       (SELECT sum(f.poblacion_afectada)
+        FROM fact_impacto_sismos_imputed f
+        JOIN dim_zonas z ON z.id_zonas = f.id_zonas) AS suma_que_ve_un_join_con_zonas
+FROM fact_impacto_sismos_imputed;
+
+\echo
+\echo '=== 6. AGREGAR LAS CLAVES: ¿los datos las cumplen? ==='
+\echo '6a. Con los hechos defectuosos todavía dentro (deben fallar):'
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN SELECT * FROM (VALUES ('id_sismo', 'dim_sismos'), ('id_zonas', 'dim_zonas'),
+                                   ('id_economia', 'dim_economia'), ('id_tiempo', 'dim_tiempo')) AS t(col, dim)
+    LOOP
+        BEGIN
+            EXECUTE format('ALTER TABLE fact_impacto_sismos_imputed ADD CONSTRAINT fk_prueba_%s '
+                           'FOREIGN KEY (%s) REFERENCES %s(%s)', r.col, r.col, r.dim, r.col);
+            RAISE NOTICE '% -> %: SE PUDO AGREGAR', r.col, r.dim;
+        EXCEPTION WHEN foreign_key_violation THEN
+            RAISE NOTICE '% -> %: RECHAZADA, hay hechos huérfanos', r.col, r.dim;
+        END;
+    END LOOP;
+END $$;
+
+\echo '6b. Se borran los cinco hechos defectuosos y se agregan las cuatro claves con los datos reales:'
+DELETE FROM fact_impacto_sismos_imputed WHERE impacto_economico = -999;
+
+DO $$
+DECLARE
+    t0 timestamptz := clock_timestamp();
+BEGIN
+    ALTER TABLE fact_impacto_sismos_imputed
+        ADD CONSTRAINT fact_impacto_sismos_imputed_id_sismo_fkey    FOREIGN KEY (id_sismo)    REFERENCES dim_sismos(id_sismo),
+        ADD CONSTRAINT fact_impacto_sismos_imputed_id_zonas_fkey    FOREIGN KEY (id_zonas)    REFERENCES dim_zonas(id_zonas),
+        ADD CONSTRAINT fact_impacto_sismos_imputed_id_economia_fkey FOREIGN KEY (id_economia) REFERENCES dim_economia(id_economia),
+        ADD CONSTRAINT fact_impacto_sismos_imputed_id_tiempo_fkey   FOREIGN KEY (id_tiempo)   REFERENCES dim_tiempo(id_tiempo);
+    RAISE NOTICE 'Las 4 claves se agregaron: los datos reales las cumplen. Validarlas sobre % hechos tardó % ms',
+        (SELECT count(*) FROM fact_impacto_sismos_imputed),
+        round(EXTRACT(EPOCH FROM clock_timestamp() - t0) * 1000);
+END $$;
+
+SELECT * FROM v_huerfanos_hechos;
+
+\echo
+\echo '=== 7. COSTO DE LAS CLAVES FORÁNEAS EN UNA CARGA (por qué a veces se omiten) ==='
+DO $$
+DECLARE
+    t0 timestamptz;
+    ms_sin numeric;
+    ms_con numeric;
+    n bigint;
+BEGIN
+    CREATE TABLE hecho_prueba_sin_fk (LIKE fact_impacto_sismos_imputed);
+    CREATE TABLE hecho_prueba_con_fk (LIKE fact_impacto_sismos_imputed);
+    ALTER TABLE hecho_prueba_con_fk
+        ADD FOREIGN KEY (id_sismo)    REFERENCES dim_sismos(id_sismo),
+        ADD FOREIGN KEY (id_zonas)    REFERENCES dim_zonas(id_zonas),
+        ADD FOREIGN KEY (id_economia) REFERENCES dim_economia(id_economia),
+        ADD FOREIGN KEY (id_tiempo)   REFERENCES dim_tiempo(id_tiempo);
+
+    t0 := clock_timestamp();
+    INSERT INTO hecho_prueba_sin_fk SELECT * FROM fact_impacto_sismos_imputed;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    ms_sin := round(EXTRACT(EPOCH FROM clock_timestamp() - t0) * 1000);
+
+    t0 := clock_timestamp();
+    INSERT INTO hecho_prueba_con_fk SELECT * FROM fact_impacto_sismos_imputed;
+    ms_con := round(EXTRACT(EPOCH FROM clock_timestamp() - t0) * 1000);
+
+    RAISE NOTICE 'Insertar % hechos sin FK: % ms | con las 4 FK: % ms (% veces el tiempo)',
+        n, ms_sin, ms_con, round(ms_con / NULLIF(ms_sin, 0), 1);
+
+    DROP TABLE hecho_prueba_sin_fk;
+    DROP TABLE hecho_prueba_con_fk;
+END $$;
+
+\echo
+\echo '=== Estado final de la copia ==='
+SELECT conname, pg_get_constraintdef(oid) AS definicion
+FROM pg_constraint
+WHERE connamespace = 'public'::regnamespace AND contype = 'f'
+ORDER BY conname; 
