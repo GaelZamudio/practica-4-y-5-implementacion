@@ -1,0 +1,119 @@
+PROPUESTAS ADICIONALES DE RESTRICCIONES - ALMACEN DE SISMOS
+Seccion 1.7, tarea 3
+
+Las tres propuestas de restricciones_dominio_sismos.sql (A: dominio fisico de
+dim_sismos, B: calendario coherente de dim_tiempo, C: medidas de los hechos y
+poblacion de las zonas) ya estan agregadas y probadas en ese archivo. Aqui van
+otras tres, distintas de aquellas. Todas se probaron en una copia de la base
+cargada con cargar_sismos.py (PostgreSQL 16, 319,592 sismos y 196,576 hechos).
+
+Lo que el esquema declara hoy son solo llaves primarias (una por dimension) y
+cuatro llaves foraneas en la tabla de hechos. No declara ningun CHECK, ningun
+UNIQUE adicional y ningun NOT NULL fuera de las llaves primarias.
+
+
+----------------------------------------------------------------------
+PROPUESTA 1. Un solo hecho por sismo, y llaves de los hechos obligatorias
+----------------------------------------------------------------------
+Problema: fact_impacto_sismos_imputed no tiene llave primaria ni UNIQUE.
+Nada impide cargar dos veces el mismo sismo, y las columnas que son llaves
+foraneas aceptan NULL (una llave foranea con NULL no se valida contra la
+dimension). Por eso el script de carga tuvo que usar NOT EXISTS en lugar del
+ON CONFLICT que si pueden usar las dimensiones.
+
+    ALTER TABLE fact_impacto_sismos_imputed
+        ADD CONSTRAINT uq_hecho_sismo UNIQUE (id_sismo);
+    ALTER TABLE fact_impacto_sismos_imputed
+        ALTER COLUMN id_sismo    SET NOT NULL,
+        ALTER COLUMN id_zonas    SET NOT NULL,
+        ALTER COLUMN id_economia SET NOT NULL,
+        ALTER COLUMN id_tiempo   SET NOT NULL;
+
+Resultado con los datos reales: SE CUMPLE. Hay 196,576 hechos y 196,576
+sismos distintos (0 duplicados), y ninguna de las cuatro llaves trae NULL. Al
+intentar insertar un segundo hecho para el sismo 0, la base lo rechaza
+("duplicate key value violates unique constraint uq_hecho_sismo").
+
+
+----------------------------------------------------------------------
+PROPUESTA 2. Caja geografica de Mexico para latitud y longitud
+----------------------------------------------------------------------
+La restriccion A del SQL solo exige coordenadas validas en el planeta (latitud
+de -90 a 90, longitud de -180 a 180), que casi cualquier dato cumple. Una regla
+mas fuerte es que el sismo caiga en la zona que cubre el catalogo.
+
+Version estricta (territorio nacional aproximado):
+
+    ALTER TABLE dim_sismos ADD CONSTRAINT ck_sismos_caja_estricta
+        CHECK (latitud BETWEEN 14 AND 33 AND longitud BETWEEN -121 AND -86);
+
+Resultado con los datos reales: NO SE CUMPLE. La base la rechaza porque 4,085
+sismos (1.3 % del total) quedan fuera de esa caja; 16 de ellos incluso traen
+estado asignado. El catalogo del SSN incluye eventos en el Pacifico, el Golfo,
+la frontera norte y Centroamerica, asi que la regla estricta describe mal los
+datos y no conviene agregarla tal cual.
+
+Version holgada (la que si recomiendo):
+
+    ALTER TABLE dim_sismos ADD CONSTRAINT ck_sismos_caja_holgada
+        CHECK (latitud BETWEEN 10 AND 39 AND longitud BETWEEN -121 AND -85);
+
+Resultado con los datos reales: SE CUMPLE (0 renglones la violan; la latitud
+va de 10.27 a 38.09 y la longitud de -120.60 a -85.55). Sigue atrapando errores
+tipicos de captura, como latitud y longitud intercambiadas o el signo de la
+longitud omitido.
+
+
+----------------------------------------------------------------------
+PROPUESTA 3. Sismo, zona y economia de un hecho deben ser la misma entidad
+----------------------------------------------------------------------
+Cada hecho apunta a una zona (dim_zonas) y a una economia (dim_economia), y
+esas dos dimensiones ordenan los estados de forma distinta: por eso en 9,534
+hechos el id_zonas y el id_economia son numeros diferentes, aunque (como se ve
+mas abajo) apunten al mismo estado. Nada garantiza que ambos hablen del mismo
+estado que el sismo. Es una regla entre tres tablas, asi que no se puede expresar con un
+CHECK; se hace con un trigger:
+
+    CREATE OR REPLACE FUNCTION fn_hecho_misma_entidad() RETURNS trigger AS $$
+    DECLARE
+        v_sismo TEXT; v_zona TEXT; v_eco TEXT;
+    BEGIN
+        SELECT nombre_estado  INTO v_sismo FROM dim_sismos   WHERE id_sismo    = NEW.id_sismo;
+        SELECT nom_ent        INTO v_zona  FROM dim_zonas    WHERE id_zonas    = NEW.id_zonas;
+        SELECT nombre_entidad INTO v_eco   FROM dim_economia WHERE id_economia = NEW.id_economia;
+        IF translate(lower(v_sismo), 'áéíóúü', 'aeiouu') IS DISTINCT FROM translate(lower(v_zona), 'áéíóúü', 'aeiouu')
+        OR translate(lower(v_zona),  'áéíóúü', 'aeiouu') IS DISTINCT FROM translate(lower(v_eco),  'áéíóúü', 'aeiouu') THEN
+            RAISE EXCEPTION 'El hecho mezcla entidades: sismo=%, zona=%, economia=%',
+                            v_sismo, v_zona, v_eco USING ERRCODE = 'check_violation';
+        END IF;
+        RETURN NEW;
+    END $$ LANGUAGE plpgsql;
+
+    CREATE TRIGGER trg_hecho_misma_entidad
+        BEFORE INSERT OR UPDATE ON fact_impacto_sismos_imputed
+        FOR EACH ROW EXECUTE FUNCTION fn_hecho_misma_entidad();
+
+(El translate quita acentos porque los nombres no estan escritos igual en las
+tres tablas: "Mexico" en los sismos y "México" en la economia.)
+
+Resultado con los datos reales: SE CUMPLE. De los 196,576 hechos, 0 mezclan
+entidades. Con el trigger instalado, un hecho coherente se acepta y uno con
+otra zona se rechaza ("El hecho mezcla entidades: sismo=Mexico, zona=Michoacan
+de Ocampo, economia=México"). Como costo, el trigger consulta tres tablas por
+cada renglon, asi que hay que desactivarlo (ALTER TABLE ... DISABLE TRIGGER)
+durante cargas masivas grandes y volver a validar al terminar.
+
+
+----------------------------------------------------------------------
+OTROS HALLAZGOS EN LOS DATOS (no son restricciones propuestas)
+----------------------------------------------------------------------
+- 115,897 sismos (36.3 %) traen estado y nombre_estado como cadena vacia en
+  lugar de NULL, y ninguno de ellos tiene hechos. Antes de agregar un
+  CHECK (estado <> '') habria que convertirlos a NULL.
+- 4 estados de dim_economia (Chiapas, Guerrero, Oaxaca y Tlaxcala) tienen
+  valor_agregado mayor que produccion_bruta_total, lo que no es posible por
+  definicion; una restriccion valor_agregado <= produccion_bruta_total fallaria
+  con esas 4 filas.
+- dim_tiempo tiene 319,592 renglones pero solo 319,450 combinaciones distintas
+  de fecha y hora: 142 pares repetidos, posibles sismos duplicados en el
+  catalogo.
