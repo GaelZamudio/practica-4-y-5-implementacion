@@ -6,13 +6,13 @@ Ejercicio 1.6 · PostgreSQL 17 · Responsable: Gael.
 
 | Rol (NOLOGIN) | Usuario (LOGIN) | Propósito |
 |---|---|---|
-| hr_app | huellared_app | Cargar y mantener los datos del proyecto: SELECT, INSERT, UPDATE y DELETE sobre sus 23 tablas. |
+| hr_app | huellared_app | Cargar y mantener los datos del proyecto: SELECT, INSERT y UPDATE sobre sus 23 tablas; DELETE solo en hogar_especie, rescate_rescatista y solicitud_adopcion. |
 | hr_consulta | huellared_consulta | Consultar las 23 tablas sin modificarlas. |
 | hr_admin | huellared_admin | Administrar tablas y tipos del proyecto, conceder permisos y efectuar cambios DDL. No administra roles ni bases del servidor. |
 
 Los usuarios heredan los permisos de su rol. El administrador del servidor solo configura inicialmente estos objetos. El rol hr_admin pasa a ser propietario de las tablas y tipos del proyecto. Para crear objetos nuevos como propietario común, el administrador debe ejecutar `SET ROLE hr_admin`. No se conceden permisos automáticos sobre futuras tablas.
 
-El rol de aplicación atiende el registro y mantenimiento de las 23 tablas: SELECT para consultar registros y sus relaciones; INSERT para altas y carga; UPDATE para corregir datos y registrar cambios de estado; DELETE para retirar registros capturados por error, siempre sujeto a las claves foráneas. El cargador usa ese mismo rol. No recibe TRUNCATE, creación de objetos permanentes en public ni propiedad de tablas. Consulta solo recibe SELECT sobre las tablas. Los identificadores son enteros asignados por la carga: el esquema no usa secuencias que requieran concesiones adicionales. Se retira CREATE de PUBLIC en el esquema public. Este alcance corresponde a una base dedicada a HuellaRed con los usuarios nuevos de esta práctica.
+El rol de aplicación atiende el registro y mantenimiento de las 23 tablas: SELECT para consultar registros y sus relaciones; INSERT para altas y carga; UPDATE para corregir datos y registrar cambios de estado; DELETE únicamente sobre hogar_especie, rescate_rescatista y solicitud_adopcion, sujeto a las claves foráneas. El cargador usa ese mismo rol. No recibe TRUNCATE, creación de objetos permanentes en public ni propiedad de tablas. Consulta solo recibe SELECT sobre las tablas. Los identificadores son enteros asignados por el generador y conservados por la carga: el esquema no usa secuencias que requieran concesiones adicionales. Se retira CREATE de PUBLIC en el esquema public. Este alcance corresponde a una base dedicada a HuellaRed con los usuarios nuevos de esta práctica.
 
 ## Archivos y preparación
 
@@ -26,15 +26,10 @@ El entorno de estas prácticas usa el contenedor `postgres_huellared_p45` y guar
 
 Completar localmente las variables de `.env.example` en `.env`, que está excluido de Git: POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_PORT, PGHOST y las tres HUELLARED_*_PASSWORD. Mantener las variables POSTGRES_* de Docker con las credenciales del administrador inicial; las nuevas contraseñas pertenecen a los usuarios de la práctica.
 
-Desde la raíz de este repositorio, con Docker Desktop encendido:
+Desde la raíz, con Docker Desktop encendido, ejecutar `docker compose up -d`.
+PostgreSQL inicia; el servicio configurar ejecuta `docker/inicializar.py` (esquema, migración y roles), y poblar carga como huellared_app. Comprobar `docker compose ps -a`: PostgreSQL debe estar saludable y ambos auxiliares en Exited (0). La configuración está automatizada; los siguientes comandos de Python son una alternativa para ejecutarla fuera de Docker.
 
-```powershell
-docker compose up -d --wait
-```
-
-En la primera ejecución, con `data/` vacío, PostgreSQL ejecuta automáticamente `esquema.sql` y después `practica-4/migraciones/001-dominios.sql`. `--wait` espera a que el servidor esté listo. En siguientes arranques se conservan los datos y no se repiten esos scripts. `configurar.py` se ejecuta después con el comando siguiente: configura usuarios y permisos, pero no vuelve a ejecutar el esquema ni las migraciones.
-
-Para detener este entorno sin borrar los datos, ejecutar `docker compose stop`. Para volver a iniciarlo, usar de nuevo `docker compose up -d --wait`.
+Para detener sin borrar datos, usar `docker compose stop`; para iniciar de nuevo, `docker compose up -d`.
 
 El programa lee variables del entorno, no carga `.env` automáticamente. Desde la raíz del repositorio, preparar las dependencias una vez:
 
@@ -49,7 +44,7 @@ Configurar usuarios y permisos con las variables de `.env`:
 .\.venv\Scripts\python.exe -m dotenv -f .env run -- .\.venv\Scripts\python.exe practica-4/seguridad/configurar.py
 ```
 
-La configuración es transaccional y admite repetirse para estos mismos usuarios y roles. Si falla, no confirma cambios. Se debe realizar sobre los nombres reservados de esta práctica, sin asignarles otros roles adicionales que amplíen sus permisos. Se ejecutó dos veces correctamente; la salida está en [la evidencia de configuración](../evidencias/configuracion.png). `.env` y `.venv` están excluidos de Git.
+La configuración es transaccional y admite repetirse para estos mismos usuarios y roles. Si falla, no confirma cambios. Se debe realizar sobre los nombres reservados de esta práctica, sin asignarles otros roles adicionales que amplíen sus permisos. Se ejecutó dos veces correctamente; la salida está en [la evidencia de configuración](../evidencias/1.6-permisos/configuracion.png). `.env` y `.venv` están excluidos de Git.
 
 ## Conexión del cargador (ejercicio 1.4)
 
@@ -84,7 +79,7 @@ Esto demuestra el requisito de conexión del 1.6. El generador, la carga del con
 
 ## Pruebas y evidencias
 
-Las pruebas se ejecutaron sobre PostgreSQL 17.11 con conexiones autenticadas como cada usuario, el esquema y la migración 001 aplicados y las tablas inicialmente vacías. La salida completa, incluidas las sentencias y los mensajes del gestor, está en [evidencias/permisos-1.png](../evidencias/permisos-1.png), [evidencias/permisos-2.png](../evidencias/permisos-2.png) y [evidencias/permisos-3.png](../evidencias/permisos-3.png). No se necesitan datos del generador para comprobar los permisos.
+Las pruebas se ejecutaron sobre PostgreSQL 17.11 con conexiones autenticadas como cada usuario, el esquema y la migración 001 aplicados y las tablas inicialmente vacías. La salida completa, incluidas las sentencias y los mensajes del gestor, está en [evidencias/permisos-1.png](../evidencias/1.6-permisos/permisos-1.png), [evidencias/permisos-2.png](../evidencias/1.6-permisos/permisos-2.png) y [evidencias/permisos-3.png](../evidencias/1.6-permisos/permisos-3.png). No se necesitan datos del generador para comprobar los permisos.
 
 Para repetirlas y guardar su salida desde PowerShell:
 
@@ -129,26 +124,47 @@ S = SELECT; I = INSERT; U = UPDATE; D = DELETE. Administración incluye permisos
 
 | Tabla | hr_app | hr_consulta | hr_admin |
 |---|---|---|---|
-| zona | S, I, U, D | S | Propietario |
-| persona | S, I, U, D | S | Propietario |
-| rescatista | S, I, U, D | S | Propietario |
-| adoptante | S, I, U, D | S | Propietario |
-| veterinario | S, I, U, D | S | Propietario |
-| hogar_temporal | S, I, U, D | S | Propietario |
+| zona | S, I, U | S | Propietario |
+| persona | S, I, U | S | Propietario |
+| rescatista | S, I, U | S | Propietario |
+| adoptante | S, I, U | S | Propietario |
+| veterinario | S, I, U | S | Propietario |
+| hogar_temporal | S, I, U | S | Propietario |
 | hogar_especie | S, I, U, D | S | Propietario |
-| rescate | S, I, U, D | S | Propietario |
-| animal | S, I, U, D | S | Propietario |
-| perro | S, I, U, D | S | Propietario |
-| gato | S, I, U, D | S | Propietario |
-| otro | S, I, U, D | S | Propietario |
+| rescate | S, I, U | S | Propietario |
+| animal | S, I, U | S | Propietario |
+| perro | S, I, U | S | Propietario |
+| gato | S, I, U | S | Propietario |
+| otro | S, I, U | S | Propietario |
 | rescate_rescatista | S, I, U, D | S | Propietario |
-| estancia | S, I, U, D | S | Propietario |
+| estancia | S, I, U | S | Propietario |
 | solicitud_adopcion | S, I, U, D | S | Propietario |
-| adopcion | S, I, U, D | S | Propietario |
-| seguimiento | S, I, U, D | S | Propietario |
-| clinica | S, I, U, D | S | Propietario |
-| vacuna | S, I, U, D | S | Propietario |
-| atencion_medica | S, I, U, D | S | Propietario |
-| vacunacion | S, I, U, D | S | Propietario |
-| cirugia | S, I, U, D | S | Propietario |
-| tratamiento | S, I, U, D | S | Propietario |
+| adopcion | S, I, U | S | Propietario |
+| seguimiento | S, I, U | S | Propietario |
+| clinica | S, I, U | S | Propietario |
+| vacuna | S, I, U | S | Propietario |
+| atencion_medica | S, I, U | S | Propietario |
+| vacunacion | S, I, U | S | Propietario |
+| cirugia | S, I, U | S | Propietario |
+| tratamiento | S, I, U | S | Propietario |
+
+
+## Evidencias de ejecución
+
+### Configuración de roles y usuarios
+
+La captura documenta la configuración mediante Python. El arranque actual con Compose ejecuta esta misma configuración automáticamente.
+
+![Configuración de roles y usuarios](../evidencias/1.6-permisos/configuracion.png)
+
+### Pruebas de permisos
+
+Las tres imágenes consecutivas corresponden a la salida de una misma ejecución, desde A1 hasta L1. La base estaba vacía, por lo que las consultas de conteo devuelven cero.
+
+![Pruebas de permisos — parte 1 de 3](../evidencias/1.6-permisos/permisos-1.png)
+
+![Pruebas de permisos — parte 2 de 3](../evidencias/1.6-permisos/permisos-2.png)
+
+![Pruebas de permisos — parte 3 de 3](../evidencias/1.6-permisos/permisos-3.png)
+
+La salida fotografiada cubre A1, A2, C1, C2, D1, D2, R1–R4 y L1. Los casos adicionales A3 y A4 del script actual comprueban la denegación de DELETE en adopcion y su autorización en solicitud_adopcion; se verificaron en la validación posterior y no aparecen en esta secuencia de imágenes.

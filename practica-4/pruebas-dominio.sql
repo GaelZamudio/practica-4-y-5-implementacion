@@ -23,7 +23,7 @@ BEGIN;
 -- Datos base válidos (ids 9000+ para no chocar con la carga)
 -- ---------------------------------------------------------------------
 INSERT INTO zona (id_zona, colonia, municipio, entidad)
-VALUES (9001, 'Centro', 'Cuauhtémoc', 'Ciudad de México');
+VALUES (9001, 'Colonia prueba dominio', 'Municipio prueba dominio', 'Entidad prueba');
 
 INSERT INTO persona (id_persona, nombres, ap_paterno, ap_materno, telefono, correo)
 VALUES (9001, 'Ana', 'López', 'Ruiz', '5512345678', 'ana.lopez@ejemplo.com'),
@@ -65,7 +65,7 @@ VALUES (9005, 'Ana María', 'Soto', '5599990000', 'ana.lopez@ejemplo.com');
 -- =====================================================================
 \echo '=== Caso 4. UNIQUE compuesta: la misma colonia dos veces ==='
 INSERT INTO zona (id_zona, colonia, municipio, entidad)
-VALUES (9002, 'Centro', 'Cuauhtémoc', 'Ciudad de México');
+VALUES (9002, 'Colonia prueba dominio', 'Municipio prueba dominio', 'Entidad prueba');
 
 -- =====================================================================
 \echo '=== Caso 5. UNIQUE parcial: un animal adoptado por dos personas a la vez ==='

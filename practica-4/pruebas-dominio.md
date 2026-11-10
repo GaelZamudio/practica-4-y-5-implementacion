@@ -20,7 +20,7 @@ Antes de los casos se insertan unos datos base válidos, con ids desde 9001 para
 
 ```sql
 INSERT INTO zona (id_zona, colonia, municipio, entidad)
-VALUES (9001, 'Centro', 'Cuauhtémoc', 'Ciudad de México');
+VALUES (9001, 'Colonia prueba dominio', 'Municipio prueba dominio', 'Entidad prueba');
 
 INSERT INTO persona (id_persona, nombres, ap_paterno, ap_materno, telefono, correo)
 VALUES (9001, 'Ana', 'López', 'Ruiz', '5512345678', 'ana.lopez@ejemplo.com'),
@@ -143,7 +143,7 @@ DETAIL:  Key (correo)=(ana.lopez@ejemplo.com) already exists.
 
 ```sql
 INSERT INTO zona (id_zona, colonia, municipio, entidad)
-VALUES (9002, 'Centro', 'Cuauhtémoc', 'Ciudad de México');
+VALUES (9002, 'Colonia prueba dominio', 'Municipio prueba dominio', 'Entidad prueba');
 ```
 
 **Resultado esperado:** rechazo por `uq_zona_ubicacion` sobre `(colonia, municipio, entidad)`. Por separado, cada valor sí puede repetirse (hay colonias Centro en muchos municipios); lo que no se repite es la combinación.

@@ -9,6 +9,11 @@ UPDATE public.animal SET nombre = nombre WHERE FALSE;
 -- A2: denegado: DDL sobre tabla del administrador.
 ALTER TABLE public.animal ADD COLUMN prueba_permiso integer;
 
+-- A3: denegado: la aplicación no puede borrar historial (adopcion), aunque no haya filas.
+DELETE FROM public.adopcion WHERE FALSE;
+-- A4: huellared_app. Permitido: DELETE donde corresponde (retirar una solicitud de adopción).
+DELETE FROM public.solicitud_adopcion WHERE FALSE;
+
 -- C1: huellared_consulta. Permitido.
 SELECT current_user, session_user;
 SELECT count(*) FROM public.persona;

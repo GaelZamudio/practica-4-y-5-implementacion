@@ -12,6 +12,15 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO hr_app, hr_consulta, hr_admin;
 GRANT CREATE ON SCHEMA public TO hr_admin;
 -- Propiedad de los objetos del proyecto: permite administrar su DDL sin ser superusuario.
+-- Mínimo privilegio para la aplicación (hr_app):
+--   * SELECT, INSERT y UPDATE en las 23 tablas: es lo que necesitan la carga y el registro diario.
+--   * DELETE solo en hogar_especie, rescate_rescatista y solicitud_adopcion: son renglones de detalle
+--     o de relación que se corrigen retirándolos (una especie que el hogar deja de aceptar, un
+--     rescatista mal asignado a un rescate, una solicitud que se retira) y no son historial.
+--   * Sin DELETE en el resto. Los datos de personas, animales, rescates, estancias, adopciones,
+--     seguimientos, atenciones y catálogos son historial: se corrigen con UPDATE o con un estado
+--     (activo, fecha_fin, fecha_devolucion, estado_actual). Borrarlos es decisión de hr_admin.
+-- hr_consulta solo recibe SELECT.
 DO $$ DECLARE t text; BEGIN
  FOREACH t IN ARRAY ARRAY['zona','persona','rescatista','adoptante','veterinario',
  'hogar_temporal','hogar_especie','rescate','animal','perro','gato','otro',
@@ -19,8 +28,11 @@ DO $$ DECLARE t text; BEGIN
  'clinica','vacuna','atencion_medica','vacunacion','cirugia','tratamiento'] LOOP
  EXECUTE format('ALTER TABLE public.%I OWNER TO hr_admin',t);
  EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, hr_app, hr_consulta',t);
- EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO hr_app',t);
+ EXECUTE format('GRANT SELECT, INSERT, UPDATE ON TABLE public.%I TO hr_app',t);
  EXECUTE format('GRANT SELECT ON TABLE public.%I TO hr_consulta',t);
+ END LOOP;
+ FOREACH t IN ARRAY ARRAY['hogar_especie','rescate_rescatista','solicitud_adopcion'] LOOP
+ EXECUTE format('GRANT DELETE ON TABLE public.%I TO hr_app',t);
  END LOOP;
 END $$;
 ALTER DOMAIN public.d_telefono OWNER TO hr_admin;
