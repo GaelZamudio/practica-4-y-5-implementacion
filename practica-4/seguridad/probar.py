@@ -55,9 +55,10 @@ def main():
          conectar("huellared_consulta", "HUELLARED_CONSULTA_PASSWORD") as consulta, \
          conectar("huellared_admin", "HUELLARED_ADMIN_PASSWORD") as admin:
         print("PostgreSQL", app.info.server_version)
-        for nombre, conn in [("A1", app), ("A2", app), ("C1", consulta),
-                             ("C2", consulta), ("D1", admin), ("D2", admin)]:
-            caso(conn, nombre, casos[nombre], denegado=nombre.endswith("2"))
+        denegados = {"A2", "A3", "C2", "D2"}
+        for nombre, conn in [("A1", app), ("A2", app), ("A3", app), ("A4", app),
+                             ("C1", consulta), ("C2", consulta), ("D1", admin), ("D2", admin)]:
+            caso(conn, nombre, casos[nombre], denegado=nombre in denegados)
         try:
             caso(admin, "R1", casos["R1"], confirmar=True)
             caso(consulta, "R2", casos["R2"], denegado=True)

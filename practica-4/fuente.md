@@ -75,7 +75,7 @@ Instituto Nacional de Estadística y Geografía. (2026). *Directorio Estadístic
 ### Reglas que cumple el generador
 
 - **Usa los nombres y valores del esquema.** Por ejemplo, `animal.sexo` toma `macho` o `hembra`; el tipo de rescate toma `rescate_en_calle`, `reporte_ciudadano` o `entrega_voluntaria`; `rescate` usa `fecha_hora`, `descripcion_lugar` y `condicion_inicial`; el rescatista de cada rescate se registra en `rescate_rescatista`.
-- **Los identificadores los asigna la carga**, no el generador.
+- **Los identificadores los asigna el generador** de forma determinista; la carga conserva esos valores y sus referencias.
 - **`zona` usa colonias y municipios reales de la CDMX** con su entidad, para que las consultas por alcaldía tengan sentido. Los nombres de colonia son públicos y no identifican a nadie.
 - **`clinica` es ficticia**: nombre, dirección, teléfono y tipo inventados, por la razón de la sección 3.2.
 - **Respeta todas las restricciones** del esquema y de las migraciones: NOT NULL, UNIQUE, CHECK de rango, de formato y de lista de valores. Las fechas son coherentes entre tablas: una estancia o una adopción nunca es anterior a su rescate, y un seguimiento nunca es anterior a su adopción.
