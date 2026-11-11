@@ -1,15 +1,49 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:17
-    container_name: postgres_huellared
+    container_name: postgres_huellared_p45
     environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Completa POSTGRES_DB en .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Completa POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Completa POSTGRES_PASSWORD en .env}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  configurar:
+    build: .
+    environment:
+      PGHOST: postgres
+      POSTGRES_PORT: "5432"
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "${POSTGRES_PORT}:5432"
-    volumes:
-      - ./data:/var/lib/postgresql/data
-    restart: unless-stopped
+      HUELLARED_APP_PASSWORD: ${HUELLARED_APP_PASSWORD:?Completa HUELLARED_APP_PASSWORD en .env}
+      HUELLARED_CONSULTA_PASSWORD: ${HUELLARED_CONSULTA_PASSWORD:?Completa HUELLARED_CONSULTA_PASSWORD en .env}
+      HUELLARED_ADMIN_PASSWORD: ${HUELLARED_ADMIN_PASSWORD:?Completa HUELLARED_ADMIN_PASSWORD en .env}
+    command: ["python", "docker/inicializar.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  poblar:
+    build: .
+    environment:
+      PGHOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      HUELLARED_APP_PASSWORD: ${HUELLARED_APP_PASSWORD}
+    command: ["python", "practica-4/poblar/poblar.py", "--regenerar"]
+    depends_on:
+      configurar:
+        condition: service_completed_successfully
+    restart: "no"

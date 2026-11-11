@@ -1,0 +1,9 @@
+.git
+.env
+.env.*
+data
+.venv
+**/__pycache__
+**/*.pyc
+practica-4/datos/generados
+evidencias
