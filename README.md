@@ -1,3 +1,7 @@
+# INSTITUTO POLITÉCNICO NACIONAL
+## ESCUELA SUPERIOR DE CÓMPUTO
+## BASES DE DATOS
+## GRUP: 3BV1
 # HuellaRed — Prácticas 4 y 5
 
 Base PostgreSQL 17 para rescate, cuidado y adopción de animales. Los datos del generador son **sintéticos**; la búsqueda de fuentes y su justificación están en `practica-4/fuente.md`.
@@ -76,6 +80,10 @@ Después del arranque y la carga, conectar pgAdmin como huellared_admin a Huella
 4. Ejecutar `practica-5/sql/2.4-edicion-valores.sql` completo. Incluye un COMMIT real de datos auxiliares y su limpieza posterior.
 
 La explicación, reglas y resultados están en `practica-5/pruebas-referenciales.md` y `practica-5/edicion-de-valores.md`, con los mismos SQL en bloques. Estas demostraciones son manuales y no forman parte del arranque automático. El análisis del almacén asignado (2.5) y el trabajo individual (2.6) son entregables separados.
+
+El trabajo individual de Alejandro (2.6) compara `RESTRICT` y `CASCADE` en la relación entre persona y hogar temporal. El [informe de Alejandro](practica-5/integrantes/alejandro-rojas.md) y su [script SQL](practica-5/integrantes/alejandro-rojas.sql) documentan el experimento sobre una copia de la base.
+
+El trabajo individual de Gael (2.6) compara `SET NULL` y `CASCADE` en la relación madre-cría de `animal`, sobre una copia de la base. El [informe con resultados y capturas](practica-5/integrantes/GaelZamudio.md) y el [script por bloques para pgAdmin](practica-5/integrantes/GaelZamudio.sql) documentan la prueba; no forman parte del arranque automático.
 
 ## Evidencias de ejecución
 
